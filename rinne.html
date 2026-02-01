@@ -174,15 +174,23 @@
         }
 
         /* プレイヤー操作ブロッカー */
-        .player-blocker {
+        /* プレイヤー操作ブロッカー (分割版) */
+        .blocker-top {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            height: 100%;
+            height: 70%;
             z-index: 10;
-            /* 広告スキップ用に右下1/6を開ける (幅50% x 高さ33.3%) */
-            clip-path: polygon(0 0, 100% 0, 100% 66.66%, 50% 66.66%, 50% 100%, 0 100%);
+        }
+
+        .blocker-bottom-left {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 50%;
+            height: 30%;
+            z-index: 10;
         }
 
         /* テキスト背後の赤背景 */
@@ -254,7 +262,9 @@
     <div class="container">
         <div class="player-wrapper">
             <div id="player"></div>
-            <div class="player-blocker"></div>
+            <!-- 操作ブロッカー (右下だけ開ける) -->
+            <div class="blocker-top"></div>
+            <div class="blocker-bottom-left"></div>
             <div class="start-overlay" id="start-overlay">
                 <button id="start-btn">RETRY NOW</button>
             </div>
