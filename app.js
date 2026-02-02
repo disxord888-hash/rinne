@@ -1,507 +1,460 @@
 /**
- * YouTube 時間耐久チャレンジ
- * ループ区間を指定してYouTube動画を耐久再生するアプリケーション
+ * Yukic_Music (Multi-Track)
+ * 元のUIデザインを維持しながら、複数動画の同時再生に対応
  */
 
-// YouTube IFrame API を読み込む
-const tag = document.createElement('script');
-tag.src = 'https://www.youtube.com/iframe_api';
-const firstScriptTag = document.getElementsByTagName('script')[0];
-firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-// グローバル変数
-let player = null;
-let isPlayerReady = false;
-let loopInterval = null;
-let statsInterval = null;
-let loopCount = 0;
-let totalSeconds = 0;
-let isPlaying = false;
-let currentVideoId = '';
-
-// DOM要素
-const elements = {
-    youtubeUrl: document.getElementById('youtube-url'),
-    loadVideo: document.getElementById('load-video'),
-    playerPlaceholder: document.getElementById('player-placeholder'),
-    playerSection: document.querySelector('.player-section'),
-    startMin: document.getElementById('start-min'),
-    startSec: document.getElementById('start-sec'),
-    endMin: document.getElementById('end-min'),
-    endSec: document.getElementById('end-sec'),
-    setStartCurrent: document.getElementById('set-start-current'),
-    setEndCurrent: document.getElementById('set-end-current'),
-    loopDurationDisplay: document.getElementById('loop-duration-display'),
-    loopCount: document.getElementById('loop-count'),
-    totalTime: document.getElementById('total-time'),
-    currentPosition: document.getElementById('current-position'),
-    playBtn: document.getElementById('play-btn'),
-    pauseBtn: document.getElementById('pause-btn'),
-    resetBtn: document.getElementById('reset-btn'),
-    exportJson: document.getElementById('export-json'),
-    importJson: document.getElementById('import-json'),
-    applyJson: document.getElementById('apply-json'),
-    jsonPreview: document.getElementById('json-preview'),
-    jsonInput: document.getElementById('json-input'),
-    importContainer: document.getElementById('import-container'),
-    toast: document.getElementById('toast'),
-    toastMessage: document.getElementById('toast-message')
-};
-
-/**
- * YouTube IFrame API が読み込まれた時に呼ばれる
- */
-function onYouTubeIframeAPIReady() {
-    console.log('YouTube IFrame API Ready');
+// IFrame APIの読み込み
+if (!window.YT) {
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 }
 
-/**
- * YouTube URLから動画IDを抽出
- */
-function extractVideoId(url) {
-    const patterns = [
-        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\?\/]+)/,
-        /youtube\.com\/watch\?.*v=([^&]+)/,
-        /^([a-zA-Z0-9_-]{11})$/
-    ];
-    
-    for (const pattern of patterns) {
-        const match = url.match(pattern);
-        if (match) return match[1];
-    }
-    return null;
-}
+// グローバル定数と変数
+let tracks = [];
+let nextTrackId = 1;
+let masterVolume = 100;
 
 /**
- * プレーヤーを初期化
- */
-function initPlayer(videoId) {
-    if (player) {
-        player.destroy();
-    }
-    
-    elements.playerPlaceholder.style.display = 'none';
-    currentVideoId = videoId;
-    
-    player = new YT.Player('player', {
-        height: '100%',
-        width: '100%',
-        videoId: videoId,
-        playerVars: {
-            'playsinline': 1,
-            'rel': 0,
-            'modestbranding': 1
-        },
-        events: {
-            'onReady': onPlayerReady,
-            'onStateChange': onPlayerStateChange
-        }
-    });
-}
-
-/**
- * プレーヤー準備完了時
- */
-function onPlayerReady(event) {
-    isPlayerReady = true;
-    elements.playBtn.disabled = false;
-    elements.pauseBtn.disabled = false;
-    
-    // 動画の長さに基づいて終了時間を初期設定
-    const duration = player.getDuration();
-    if (getEndTime() === 0 || getEndTime() > duration) {
-        const endMin = Math.floor(Math.min(30, duration) / 60);
-        const endSec = Math.floor(Math.min(30, duration) % 60);
-        elements.endMin.value = endMin;
-        elements.endSec.value = endSec;
-    }
-    
-    updateLoopDurationDisplay();
-    updateJsonPreview();
-    showToast('動画を読み込みました！🎬');
-}
-
-/**
- * プレーヤー状態変更時
- */
-function onPlayerStateChange(event) {
-    if (event.data === YT.PlayerState.PLAYING) {
-        elements.playerSection.classList.add('playing');
-        elements.playerSection.classList.remove('paused');
-    } else if (event.data === YT.PlayerState.PAUSED) {
-        elements.playerSection.classList.remove('playing');
-        elements.playerSection.classList.add('paused');
-    } else {
-        elements.playerSection.classList.remove('playing', 'paused');
-    }
-}
-
-/**
- * 開始時間を秒数で取得
- */
-function getStartTime() {
-    const min = parseInt(elements.startMin.value) || 0;
-    const sec = parseInt(elements.startSec.value) || 0;
-    return min * 60 + sec;
-}
-
-/**
- * 終了時間を秒数で取得
- */
-function getEndTime() {
-    const min = parseInt(elements.endMin.value) || 0;
-    const sec = parseInt(elements.endSec.value) || 0;
-    return min * 60 + sec;
-}
-
-/**
- * ループ区間表示を更新
- */
-function updateLoopDurationDisplay() {
-    const duration = getEndTime() - getStartTime();
-    if (duration <= 0) {
-        elements.loopDurationDisplay.textContent = '無効な区間';
-        elements.loopDurationDisplay.style.color = '#ef4444';
-    } else {
-        elements.loopDurationDisplay.textContent = formatTime(duration);
-        elements.loopDurationDisplay.style.color = '';
-    }
-}
-
-/**
- * 時間をフォーマット (HH:MM:SS or MM:SS)
+ * ユーティリティ: 時間フォーマット
  */
 function formatTime(seconds, includeHours = false) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    
     if (h > 0 || includeHours) {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     }
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
-/**
- * 耐久開始
- */
-function startEndurance() {
-    if (!isPlayerReady || !player) return;
-    
-    const startTime = getStartTime();
-    const endTime = getEndTime();
-    
-    if (endTime <= startTime) {
-        showToast('終了時間は開始時間より後に設定してください ⚠️');
-        return;
-    }
-    
-    isPlaying = true;
-    player.seekTo(startTime, true);
-    player.playVideo();
-    
-    // ループチェック開始
-    if (loopInterval) clearInterval(loopInterval);
-    loopInterval = setInterval(checkLoop, 100);
-    
-    // 統計更新開始
-    if (statsInterval) clearInterval(statsInterval);
-    statsInterval = setInterval(updateStats, 1000);
-    
-    elements.playBtn.innerHTML = '<span class="btn-icon">▶️</span><span>再生中...</span>';
-    showToast('耐久開始！頑張れ！💪');
-}
-
-/**
- * ループをチェック
- */
-function checkLoop() {
-    if (!player || !isPlaying) return;
-    
-    const currentTime = player.getCurrentTime();
-    const endTime = getEndTime();
-    const startTime = getStartTime();
-    
-    if (currentTime >= endTime) {
-        loopCount++;
-        player.seekTo(startTime, true);
-        
-        // ループアニメーション
-        const statsSection = document.querySelector('.stats-section');
-        statsSection.classList.add('looping');
-        setTimeout(() => statsSection.classList.remove('looping'), 1000);
-        
-        updateLoopCountDisplay();
-    }
-    
-    // 現在位置表示を更新
-    elements.currentPosition.textContent = formatTime(currentTime);
-}
-
-/**
- * 統計を更新
- */
-function updateStats() {
-    if (!isPlaying) return;
-    
-    totalSeconds++;
-    elements.totalTime.textContent = formatTime(totalSeconds, true);
-}
-
-/**
- * ループ回数表示を更新
- */
-function updateLoopCountDisplay() {
-    elements.loopCount.textContent = loopCount.toLocaleString();
-}
-
-/**
- * 一時停止
- */
-function pauseEndurance() {
-    if (!player) return;
-    
-    isPlaying = false;
-    player.pauseVideo();
-    
-    if (loopInterval) {
-        clearInterval(loopInterval);
-        loopInterval = null;
-    }
-    if (statsInterval) {
-        clearInterval(statsInterval);
-        statsInterval = null;
-    }
-    
-    elements.playBtn.innerHTML = '<span class="btn-icon">▶️</span><span>再開</span>';
-    showToast('一時停止中 ⏸️');
-}
-
-/**
- * リセット
- */
-function resetEndurance() {
-    pauseEndurance();
-    
-    loopCount = 0;
-    totalSeconds = 0;
-    
-    elements.loopCount.textContent = '0';
-    elements.totalTime.textContent = '00:00:00';
-    elements.currentPosition.textContent = '00:00';
-    elements.playBtn.innerHTML = '<span class="btn-icon">▶️</span><span>耐久開始</span>';
-    
-    if (player && isPlayerReady) {
-        player.seekTo(getStartTime(), true);
-        player.pauseVideo();
-    }
-    
-    showToast('リセットしました 🔄');
-}
-
-/**
- * 現在の再生位置を開始時間に設定
- */
-function setStartFromCurrent() {
-    if (!player || !isPlayerReady) return;
-    
-    const currentTime = player.getCurrentTime();
-    elements.startMin.value = Math.floor(currentTime / 60);
-    elements.startSec.value = Math.floor(currentTime % 60);
-    updateLoopDurationDisplay();
-    updateJsonPreview();
-    showToast('開始時間を設定しました ✅');
-}
-
-/**
- * 現在の再生位置を終了時間に設定
- */
-function setEndFromCurrent() {
-    if (!player || !isPlayerReady) return;
-    
-    const currentTime = player.getCurrentTime();
-    elements.endMin.value = Math.floor(currentTime / 60);
-    elements.endSec.value = Math.floor(currentTime % 60);
-    updateLoopDurationDisplay();
-    updateJsonPreview();
-    showToast('終了時間を設定しました ✅');
-}
-
-/**
- * 現在の設定をJSON形式で取得
- */
-function getConfigJson() {
-    return {
-        videoId: currentVideoId,
-        videoUrl: elements.youtubeUrl.value,
-        startTime: getStartTime(),
-        endTime: getEndTime(),
-        loopDuration: getEndTime() - getStartTime(),
-        // 統計情報も含める（オプション）
-        stats: {
-            loopCount: loopCount,
-            totalSeconds: totalSeconds
-        },
-        createdAt: new Date().toISOString()
-    };
-}
-
-/**
- * JSONプレビューを更新
- */
-function updateJsonPreview() {
-    const config = getConfigJson();
-    elements.jsonPreview.value = JSON.stringify(config, null, 2);
-}
-
-/**
- * JSONをクリップボードにコピー
- */
-function exportJsonToClipboard() {
-    const config = getConfigJson();
-    const jsonString = JSON.stringify(config, null, 2);
-    
-    navigator.clipboard.writeText(jsonString)
-        .then(() => showToast('JSONをコピーしました！📋'))
-        .catch(() => {
-            // フォールバック
-            elements.jsonPreview.select();
-            document.execCommand('copy');
-            showToast('JSONをコピーしました！📋');
-        });
-}
-
-/**
- * JSONインポートエリアを表示/非表示
- */
-function toggleImportContainer() {
-    elements.importContainer.classList.toggle('hidden');
-    if (!elements.importContainer.classList.contains('hidden')) {
-        elements.jsonInput.focus();
-    }
-}
-
-/**
- * JSONから設定を適用
- */
-function applyJsonConfig() {
-    try {
-        const jsonString = elements.jsonInput.value.trim();
-        if (!jsonString) {
-            showToast('JSONを入力してください ⚠️');
-            return;
-        }
-        
-        const config = JSON.parse(jsonString);
-        
-        // URLまたは動画ID
-        if (config.videoUrl) {
-            elements.youtubeUrl.value = config.videoUrl;
-        } else if (config.videoId) {
-            elements.youtubeUrl.value = `https://www.youtube.com/watch?v=${config.videoId}`;
-        }
-        
-        // ループ区間
-        if (typeof config.startTime === 'number') {
-            elements.startMin.value = Math.floor(config.startTime / 60);
-            elements.startSec.value = Math.floor(config.startTime % 60);
-        }
-        
-        if (typeof config.endTime === 'number') {
-            elements.endMin.value = Math.floor(config.endTime / 60);
-            elements.endSec.value = Math.floor(config.endTime % 60);
-        }
-        
-        updateLoopDurationDisplay();
-        
-        // 動画を読み込む
-        const videoId = extractVideoId(elements.youtubeUrl.value);
-        if (videoId) {
-            initPlayer(videoId);
-        }
-        
-        elements.importContainer.classList.add('hidden');
-        elements.jsonInput.value = '';
-        
-        showToast('設定を適用しました！✨');
-    } catch (e) {
-        console.error('JSON parse error:', e);
-        showToast('JSONの形式が正しくありません ❌');
-    }
-}
-
-/**
- * トースト通知を表示
- */
 function showToast(message) {
-    elements.toastMessage.textContent = message;
-    elements.toast.classList.add('show');
-    elements.toast.classList.remove('hidden');
-    
-    setTimeout(() => {
-        elements.toast.classList.remove('show');
-    }, 3000);
+    const toast = document.getElementById('toast');
+    const msg = document.getElementById('toast-message');
+    if (!toast || !msg) return;
+    msg.textContent = message;
+    toast.classList.add('show');
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.remove('show'), 3000);
 }
 
 /**
- * 動画を読み込み
+ * トラッククラス
  */
-function loadVideo() {
-    const url = elements.youtubeUrl.value.trim();
-    const videoId = extractVideoId(url);
-    
-    if (!videoId) {
-        showToast('有効なYouTube URLを入力してください ⚠️');
-        return;
-    }
-    
-    initPlayer(videoId);
-}
+class Track {
+    constructor(id, container, config = null) {
+        this.id = id;
+        this.player = null;
+        this.isPlayerReady = false;
+        this.isPlaying = false;
+        this.loopCount = 0;
+        this.totalSeconds = 0;
+        this.loopInterval = null;
+        this.statsInterval = null;
+        this.videoId = '';
+        this.playerId = `track-player-instance-${id}`;
+        this.volume = 100; // 個別ボリューム
+        this.isMuted = false;
 
-// イベントリスナーの設定
-document.addEventListener('DOMContentLoaded', () => {
-    // 動画読み込み
-    elements.loadVideo.addEventListener('click', loadVideo);
-    elements.youtubeUrl.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') loadVideo();
-    });
-    
-    // ループ区間設定
-    elements.setStartCurrent.addEventListener('click', setStartFromCurrent);
-    elements.setEndCurrent.addEventListener('click', setEndFromCurrent);
-    
-    // 時間入力変更時にプレビュー更新
-    [elements.startMin, elements.startSec, elements.endMin, elements.endSec].forEach(el => {
-        el.addEventListener('change', () => {
-            updateLoopDurationDisplay();
-            updateJsonPreview();
+        // DOM構築
+        const template = document.getElementById('track-template');
+        const clone = template.content.cloneNode(true);
+        this.element = clone.querySelector('.track-unit');
+        this.element.dataset.trackId = id;
+        this.element.querySelector('.id-number').textContent = id;
+
+        // プレイヤー用DIVのID設定
+        const pDiv = this.element.querySelector('.youtube-player-div');
+        pDiv.id = this.playerId;
+
+        // UI要素の参照
+        this.ui = {
+            urlInput: this.element.querySelector('.youtube-url'),
+            loadBtn: this.element.querySelector('.load-video-btn'),
+            removeBtn: this.element.querySelector('.remove-track-btn'),
+            mvCheckbox: this.element.querySelector('.show-mv-checkbox'),
+            playerContainer: this.element.querySelector('.player-container'),
+            placeholder: this.element.querySelector('.player-placeholder'),
+            startMin: this.element.querySelector('.start-min'),
+            startSec: this.element.querySelector('.start-sec'),
+            endMin: this.element.querySelector('.end-min'),
+            endSec: this.element.querySelector('.end-sec'),
+            setStartBtn: this.element.querySelector('.set-start-current'),
+            setEndBtn: this.element.querySelector('.set-end-current'),
+            loopDuration: this.element.querySelector('.loop-duration-display'),
+            loopCount: this.element.querySelector('.loop-count'),
+            totalTime: this.element.querySelector('.total-time'),
+            currentPos: this.element.querySelector('.current-position'),
+            playBtn: this.element.querySelector('.play-btn'),
+            pauseBtn: this.element.querySelector('.pause-btn'),
+            resetBtn: this.element.querySelector('.reset-btn'),
+            statsSection: this.element.querySelector('.stats-section'),
+            playerSection: this.element.querySelector('.player-section'),
+            playerSection: this.element.querySelector('.player-section'),
+            volumeSlider: this.element.querySelector('.track-volume-slider'),
+            volumeIcon: this.element.querySelector('.volume-control-group .volume-icon')
+        };
+
+        container.appendChild(this.element);
+
+        // イベントリスナー登録
+        this.ui.loadBtn.addEventListener('click', () => this.loadVideo());
+        this.ui.urlInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.loadVideo(); });
+        this.ui.removeBtn.addEventListener('click', () => this.destroy());
+        this.ui.mvCheckbox.addEventListener('change', () => this.updateMvVisibility());
+        this.ui.playBtn.addEventListener('click', () => this.start());
+        this.ui.pauseBtn.addEventListener('click', () => this.pause());
+        this.ui.resetBtn.addEventListener('click', () => this.reset());
+        this.ui.setStartBtn.addEventListener('click', () => this.setStartCurrent());
+        this.ui.setEndBtn.addEventListener('click', () => this.setEndCurrent());
+
+        this.ui.volumeSlider.addEventListener('input', (e) => {
+            this.volume = parseInt(e.target.value);
+            // ミュート中にスライダー操作したらミュート解除する？今回はしない
+            if (!this.isMuted) this.applyVolume();
         });
-    });
-    
-    // コントロールボタン
-    elements.playBtn.addEventListener('click', () => {
-        if (isPlaying) {
-            // 再生中なら何もしない（または再スタート）
+
+        this.ui.volumeIcon.addEventListener('click', () => this.toggleMute());
+
+        [this.ui.startMin, this.ui.startSec, this.ui.endMin, this.ui.endSec].forEach(el => {
+            el.addEventListener('change', () => this.updateLoopDurationDisplay());
+        });
+
+        // 初期設定
+        if (config) {
+            this.applyConfig(config);
+        }
+    }
+
+    extractVideoId(url) {
+        const patterns = [
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\?\/]+)/,
+            /youtube\.com\/watch\?.*v=([^&]+)/,
+            /^([a-zA-Z0-9_-]{11})$/
+        ];
+        for (const p of patterns) {
+            const match = url.match(p);
+            if (match) return match[1];
+        }
+        return null;
+    }
+
+    loadVideo() {
+        const videoId = this.extractVideoId(this.ui.urlInput.value.trim());
+        if (!videoId) {
+            showToast('有効なURLを入力してください ⚠️');
             return;
         }
-        startEndurance();
-    });
-    elements.pauseBtn.addEventListener('click', pauseEndurance);
-    elements.resetBtn.addEventListener('click', resetEndurance);
-    
-    // JSON共有
-    elements.exportJson.addEventListener('click', exportJsonToClipboard);
-    elements.importJson.addEventListener('click', toggleImportContainer);
-    elements.applyJson.addEventListener('click', applyJsonConfig);
-    
-    // 初期JSONプレビュー
-    updateJsonPreview();
+        this.initPlayer(videoId);
+    }
+
+    initPlayer(videoId) {
+        if (this.player) {
+            try { this.player.destroy(); } catch (e) { }
+            // DIVが消えるため再作成
+            const div = document.createElement('div');
+            div.id = this.playerId;
+            div.className = 'youtube-player-div';
+            this.ui.playerContainer.appendChild(div);
+        }
+        this.ui.placeholder.style.display = 'none';
+        this.videoId = videoId;
+        this.player = new YT.Player(this.playerId, {
+            height: '100%', width: '100%', videoId: videoId,
+            playerVars: { 'playsinline': 1, 'rel': 0, 'modestbranding': 1 },
+            events: {
+                'onReady': (e) => this.onPlayerReady(e),
+                'onStateChange': (e) => this.onPlayerStateChange(e)
+            }
+        });
+    }
+
+    onPlayerReady(event) {
+        this.isPlayerReady = true;
+        this.ui.playBtn.disabled = false;
+        this.ui.pauseBtn.disabled = false;
+        const duration = this.player.getDuration();
+        if (this.getEndTime() === 0) {
+            this.ui.endMin.value = Math.floor(Math.min(30, duration) / 60);
+            this.ui.endSec.value = Math.floor(Math.min(30, duration) % 60);
+        }
+        this.updateLoopDurationDisplay();
+        this.updateMvVisibility();
+        this.applyVolume();
+        showToast(`TRACK #${this.id} 読み込み完了!`);
+    }
+
+    toggleMute() {
+        this.isMuted = !this.isMuted;
+        this.updateVolumeUI();
+        this.applyVolume();
+    }
+
+    updateVolumeUI() {
+        if (this.isMuted) {
+            this.ui.volumeIcon.textContent = '🔇';
+            this.ui.volumeSlider.disabled = true;
+        } else {
+            this.ui.volumeIcon.textContent = '🔊';
+            this.ui.volumeSlider.disabled = false;
+        }
+    }
+
+    applyVolume() {
+        if (!this.player || !this.player.setVolume) return;
+        if (this.isMuted) {
+            this.player.setVolume(0);
+        } else {
+            const effectiveVolume = Math.floor(this.volume * (masterVolume / 100));
+            this.player.setVolume(effectiveVolume);
+        }
+    }
+
+    onPlayerStateChange(event) {
+        if (event.data === YT.PlayerState.PLAYING) {
+            this.ui.playerSection.classList.add('playing');
+            this.ui.playerSection.classList.remove('paused');
+        } else if (event.data === YT.PlayerState.PAUSED) {
+            this.ui.playerSection.classList.remove('playing');
+            this.ui.playerSection.classList.add('paused');
+        } else {
+            this.ui.playerSection.classList.remove('playing', 'paused');
+        }
+    }
+
+    getStartTime() {
+        return (parseInt(this.ui.startMin.value) || 0) * 60 + (parseFloat(this.ui.startSec.value) || 0);
+    }
+
+    getEndTime() {
+        return (parseInt(this.ui.endMin.value) || 0) * 60 + (parseFloat(this.ui.endSec.value) || 0);
+    }
+
+    updateLoopDurationDisplay() {
+        const diff = this.getEndTime() - this.getStartTime();
+        if (diff <= 0) {
+            this.ui.loopDuration.textContent = '無効な区間';
+            this.ui.loopDuration.style.color = '#ef4444';
+        } else {
+            // 小数点がある場合は表示
+            const isDecimal = diff % 1 !== 0;
+            this.ui.loopDuration.textContent = isDecimal
+                ? `${diff.toFixed(2)}秒`
+                : formatTime(diff);
+            this.ui.loopDuration.style.color = '';
+        }
+    }
+
+    updateMvVisibility() {
+        if (this.ui.mvCheckbox.checked) {
+            this.ui.playerContainer.classList.remove('hidden-mv');
+        } else {
+            this.ui.playerContainer.classList.add('hidden-mv');
+        }
+    }
+
+    start() {
+        if (!this.isPlayerReady || !this.player) return;
+        const start = this.getStartTime();
+        const end = this.getEndTime();
+        if (end <= start) {
+            showToast('終了時間を開始時間より後にしてください ⚠️');
+            return;
+        }
+        this.isPlaying = true;
+        this.player.seekTo(start, true);
+        this.player.playVideo();
+        if (this.loopInterval) clearInterval(this.loopInterval);
+        this.loopInterval = setInterval(() => this.checkLoop(), 100);
+        if (this.statsInterval) clearInterval(this.statsInterval);
+        this.statsInterval = setInterval(() => { if (this.isPlaying) this.totalSeconds++; this.updateStatsUI(); }, 1000);
+        this.ui.playBtn.innerHTML = '<span class="btn-icon">▶️</span><span>再生中...</span>';
+    }
+
+    pause() {
+        if (!this.player) return;
+        this.isPlaying = false;
+        this.player.pauseVideo();
+        this.ui.playBtn.innerHTML = '<span class="btn-icon">▶️</span><span>再開</span>';
+    }
+
+    reset() {
+        this.pause();
+        this.loopCount = 0;
+        this.totalSeconds = 0;
+        this.updateStatsUI();
+        if (this.player && this.isPlayerReady) {
+            this.player.seekTo(this.getStartTime(), true);
+            this.player.pauseVideo();
+        }
+        this.ui.playBtn.innerHTML = '<span class="btn-icon">▶️</span><span>耐久開始</span>';
+    }
+
+    checkLoop() {
+        if (!this.player || !this.isPlaying) return;
+        const current = this.player.getCurrentTime();
+        const start = this.getStartTime();
+        const end = this.getEndTime();
+        if (current >= end) {
+            this.loopCount++;
+            this.player.seekTo(start, true);
+            this.ui.statsSection.classList.add('looping');
+            setTimeout(() => this.ui.statsSection.classList.remove('looping'), 1000);
+            this.ui.loopCount.textContent = this.loopCount.toLocaleString();
+        }
+        this.ui.currentPos.textContent = formatTime(current);
+    }
+
+    updateStatsUI() {
+        this.ui.totalTime.textContent = formatTime(this.totalSeconds, true);
+        this.ui.loopCount.textContent = this.loopCount.toLocaleString();
+    }
+
+    setStartCurrent() {
+        if (!this.player || !this.isPlayerReady) return;
+        const cur = this.player.getCurrentTime();
+        this.ui.startMin.value = Math.floor(cur / 60);
+        this.ui.startSec.value = (cur % 60).toFixed(2);
+        this.updateLoopDurationDisplay();
+    }
+
+    setEndCurrent() {
+        if (!this.player || !this.isPlayerReady) return;
+        const cur = this.player.getCurrentTime();
+        this.ui.endMin.value = Math.floor(cur / 60);
+        this.ui.endSec.value = (cur % 60).toFixed(2);
+        this.updateLoopDurationDisplay();
+    }
+
+    destroy() {
+        if (this.player) try { this.player.destroy(); } catch (e) { }
+        if (this.loopInterval) clearInterval(this.loopInterval);
+        if (this.statsInterval) clearInterval(this.statsInterval);
+        this.element.remove();
+        tracks = tracks.filter(t => t.id !== this.id);
+    }
+
+    getConfig() {
+        return {
+            url: this.ui.urlInput.value,
+            videoId: this.videoId,
+            startMin: this.ui.startMin.value,
+            startSec: this.ui.startSec.value,
+            endMin: this.ui.endMin.value,
+            endSec: this.ui.endSec.value,
+            showMv: this.ui.mvCheckbox.checked,
+            volume: this.volume,
+            isMuted: this.isMuted
+        };
+    }
+
+    applyConfig(c) {
+        this.ui.urlInput.value = c.url || '';
+        this.videoId = c.videoId || '';
+        this.ui.startMin.value = c.startMin || 0;
+        this.ui.startSec.value = c.startSec || 0;
+        this.ui.endMin.value = c.endMin || 0;
+        this.ui.endSec.value = c.endSec || 30;
+        this.ui.mvCheckbox.checked = c.showMv !== false;
+
+        if (c.volume !== undefined) {
+            this.volume = c.volume;
+            this.ui.volumeSlider.value = c.volume;
+        }
+
+        if (c.isMuted !== undefined) {
+            this.isMuted = c.isMuted;
+            this.updateVolumeUI();
+        }
+
+        if (this.videoId) this.initPlayer(this.videoId);
+    }
+}
+
+/**
+ * グローバル初期化
+ */
+function onYouTubeIframeAPIReady() {
+    console.log('Yukic_Music Engine Ready');
+    if (tracks.length === 0) {
+        addTrack();
+    }
+}
+
+function addTrack(config = null) {
+    const list = document.getElementById('tracks-list');
+    const t = new Track(nextTrackId++, list, config);
+    tracks.push(t);
+}
+
+// ボタンイベント
+document.getElementById('add-track').addEventListener('click', () => addTrack());
+
+document.getElementById('master-play').addEventListener('click', () => {
+    tracks.forEach(track => track.start());
+    showToast('すべてのトラックを開始！🚀');
 });
 
-// ページ離脱時の警告
+let allMvVisible = true;
+document.getElementById('master-toggle-mv').addEventListener('click', () => {
+    allMvVisible = !allMvVisible;
+    tracks.forEach(t => {
+        t.ui.mvCheckbox.checked = allMvVisible;
+        t.updateMvVisibility();
+    });
+    showToast(`すべてのMVを ${allMvVisible ? '表示' : '非表示'} にしました`);
+});
+
+document.getElementById('master-pause').addEventListener('click', () => {
+    tracks.forEach(track => track.pause());
+    showToast('一時停止しました ⏸️');
+});
+
+document.getElementById('master-reset').addEventListener('click', () => {
+    tracks.forEach(track => track.reset());
+    showToast('リセット完了 🔄');
+});
+
+// マスターボリューム
+document.getElementById('master-volume-slider').addEventListener('input', (e) => {
+    masterVolume = parseInt(e.target.value);
+    tracks.forEach(track => track.applyVolume());
+});
+
+// JSON共有
+document.getElementById('export-json').addEventListener('click', () => {
+    const data = tracks.map(t => t.getConfig());
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+        .then(() => showToast('全設定をJSONでコピーしました！'));
+});
+
+document.getElementById('import-json').addEventListener('click', () => {
+    document.getElementById('import-container').classList.toggle('hidden');
+});
+
+document.getElementById('apply-json').addEventListener('click', () => {
+    try {
+        const json = document.getElementById('json-input').value.trim();
+        const data = JSON.parse(json);
+        if (!Array.isArray(data)) return;
+
+        // 既存トラックを全削除
+        [...tracks].forEach(t => t.destroy());
+        tracks = [];
+        nextTrackId = 1;
+
+        data.forEach(c => addTrack(c));
+        document.getElementById('import-container').classList.add('hidden');
+        showToast('バックアップから復元しました！✨');
+    } catch (e) {
+        alert('Invalid JSON');
+    }
+});
+
+// 警告
 window.addEventListener('beforeunload', (e) => {
-    if (isPlaying || loopCount > 0) {
-        e.preventDefault();
-        e.returnValue = '';
+    if (tracks.some(t => t.isPlaying)) {
+        e.preventDefault(); e.returnValue = '';
     }
 });

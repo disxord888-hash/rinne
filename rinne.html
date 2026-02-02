@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>輪廻</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Antique&family=Noto+Serif+JP:wght@700;900&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Zen Antique', serif;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            padding: 1rem;
+        }
+
+        .player-wrapper {
+            width: 100%;
+            max-width: 900px;
+            aspect-ratio: 16 / 9;
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 60px rgba(80, 0, 0, 0.6);
+        }
+
+        #player {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .rinne-counter {
+            text-align: center;
+            position: relative;
+            z-index: 100000;
+        }
+
+        .rinne-label {
+            font-size: 1.5rem;
+            color: #8b0000;
+            letter-spacing: 0.5em;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 20px rgba(139, 0, 0, 0.7);
+        }
+
+        .rinne-count {
+            font-family: 'Noto Serif JP', serif;
+            font-size: 4rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #4a0000 0%, #8b0000 50%, #5c1a1a 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                filter: brightness(1);
+            }
+
+            50% {
+                opacity: 0.8;
+                filter: brightness(1.3);
+            }
+        }
+
+        .rinne-count.flash {
+            animation: flash 0.3s ease-out;
+        }
+
+        @keyframes flash {
+            0% {
+                transform: scale(1.2);
+                filter: brightness(2);
+            }
+
+            100% {
+                transform: scale(1);
+                filter: brightness(1);
+            }
+        }
+
+        /* 背景エフェクト */
+        .bg-glow {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(80, 0, 0, 0.25) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* RETRY NOW エフェクト */
+        .retry-flash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle, rgba(139, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.9) 100%);
+            pointer-events: none;
+            z-index: 99999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .retry-flash.active {
+            animation: retryFlash 1.5s ease-out;
+        }
+
+        @keyframes retryFlash {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.8;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        /* 赤いノイズオーバーレイ */
+        .noise-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 99998;
+            opacity: 0;
+            background:
+                url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E"),
+                linear-gradient(rgba(139, 0, 0, 0.3), rgba(80, 0, 0, 0.3));
+            background-blend-mode: overlay;
+        }
+
+        /* プレイヤー操作ブロッカー */
+        /* プレイヤー操作ブロッカー (分割版) */
+        .blocker-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 70%;
+            z-index: 10;
+        }
+
+        .blocker-bottom-left {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 50%;
+            height: 30%;
+            z-index: 10;
+        }
+
+        /* テキスト背後の赤背景 */
+        .red-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(139, 0, 0, 1);
+            pointer-events: none;
+            z-index: 99999;
+            /* ノイズ(99998)より上、文字(100000)より下 */
+            opacity: 0;
+            mix-blend-mode: multiply;
+            /* 画面全体を赤く染める */
+            transition: opacity 0.5s ease;
+        }
+
+        /* スタートボタンオーバーレイ */
+        .start-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.7);
+            transition: opacity 0.5s ease;
+        }
+
+        .start-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #start-btn {
+            background: rgba(139, 0, 0, 0.3);
+            border: 2px solid #8b0000;
+            color: #ffcccc;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            padding: 1rem 3rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            box-shadow: 0 0 20px rgba(139, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        #start-btn:hover {
+            background: rgba(139, 0, 0, 0.6);
+            box-shadow: 0 0 40px rgba(139, 0, 0, 0.8);
+            transform: scale(1.05);
+            color: #fff;
+        }
+
+        /* YouTube入力欄のエフェクト */
+        .yt-input-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100001;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #8b0000;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 0 30px rgba(139, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            transform: translateY(-120%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .yt-input-container.active {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .yt-input-container input {
+            background: rgba(139, 0, 0, 0.1);
+            border: 1px solid #8b0000;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            outline: none;
+            width: 250px;
+            font-family: inherit;
+        }
+
+        .yt-input-container button {
+            background: #8b0000;
+            color: #fff;
+            border: none;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+            font-weight: bold;
+        }
+
+        .yt-input-container button:hover {
+            background: #ad0000;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-glow"></div>
+    <div class="retry-flash" id="retryFlash"></div>
+    <div class="noise-overlay" id="noise"></div>
+
+    <div class="container">
+        <div class="player-wrapper">
+            <div id="player"></div>
+            <!-- 操作ブロッカー (右下だけ開ける) -->
+            <div class="blocker-top"></div>
+            <div class="blocker-bottom-left"></div>
+            <div class="start-overlay" id="start-overlay">
+                <button id="start-btn">RETRY NOW</button>
+            </div>
+        </div>
+        <div id="bg-player-container"
+            style="position:fixed; top:-999px; left:-999px; width:1px; height:1px; overflow:hidden;">
+            <div id="bg-player"></div>
+            <div id="bg-player2"></div>
+            <div id="bg-player3"></div>
+            <div id="bg-player4"></div>
+            <div id="bg-player-custom"></div>
+        </div>
+
+        <!-- 背景赤レイヤー -->
+        <div class="red-bg" id="red-bg"></div>
+
+        <div class="rinne-counter">
+            <div class="rinne-label">輪廻回数</div>
+            <div class="rinne-count" id="count">0</div>
+        </div>
+
+        <div class="yt-input-container" id="yt-input-container">
+            <input type="text" id="custom-yt-url" placeholder="YouTube URLをいれてね">
+            <button id="custom-yt-play">再生</button>
+        </div>
+    </div>
+
+    <script>
+        // YouTube IFrame API
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        let player;
+        let bgPlayer;
+        let bgPlayer2;
+        let bgPlayer3;
+        let bgPlayer4;
+        let bgPlayerCustom;
+        let rinneCount = 0;
+        let loopInterval;
+
+        const VIDEO_ID = '3iUgKH8c7p4';
+        const START_TIME = 12; // 0:12
+        const END_TIME = 12.25;   // 0:12.35
+
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('player', {
+                videoId: VIDEO_ID,
+                playerVars: {
+                    autoplay: 0, // 自動再生はボタンで制御
+                    start: START_TIME,
+                    controls: 0, // コントロールなし
+                    disablekb: 1, // キーボード無効
+                    fs: 0, // 全画面ボタンなし
+                    modestbranding: 1,
+                    rel: 0,
+                    playsinline: 1,
+                    iv_load_policy: 3 // アノテーションなし
+                },
+                events: {
+                    onReady: onPlayerReady,
+                    onStateChange: onPlayerStateChange
+                }
+            });
+
+            bgPlayer = new YT.Player('bg-player', {
+                videoId: 'NFT6GMPeYJI',
+                playerVars: {
+                    autoplay: 0,
+                    loop: 1,
+                    playlist: 'NFT6GMPeYJI',
+                    controls: 0,
+                    disablekb: 1,
+                    modestbranding: 1,
+                    rel: 0,
+                    iv_load_policy: 3
+                }
+            });
+
+            bgPlayer2 = new YT.Player('bg-player2', {
+                videoId: 'OgQc2wSjy3c',
+                playerVars: {
+                    autoplay: 0,
+                    loop: 1,
+                    playlist: 'OgQc2wSjy3c',
+                    controls: 0,
+                    disablekb: 1,
+                    modestbranding: 1,
+                    rel: 0,
+                    iv_load_policy: 3
+                }
+            });
+
+            bgPlayer3 = new YT.Player('bg-player3', {
+                videoId: 'TbakFPc4ZTw',
+                playerVars: {
+                    autoplay: 0,
+                    loop: 1,
+                    playlist: 'TbakFPc4ZTw',
+                    controls: 0,
+                    disablekb: 1,
+                    modestbranding: 1,
+                    rel: 0,
+                    iv_load_policy: 3
+                }
+            });
+
+            bgPlayer4 = new YT.Player('bg-player4', {
+                videoId: '8zNRKC6BwRQ',
+                playerVars: {
+                    autoplay: 0,
+                    loop: 1,
+                    playlist: '8zNRKC6BwRQ',
+                    controls: 0,
+                    disablekb: 1,
+                    modestbranding: 1,
+                    rel: 0,
+                    iv_load_policy: 3
+                }
+            });
+
+            // カスタム用プレイヤー（最初は空）
+            bgPlayerCustom = new YT.Player('bg-player-custom', {
+                height: '1',
+                width: '1',
+                playerVars: {
+                    autoplay: 0,
+                    loop: 1,
+                    controls: 0,
+                    disablekb: 1,
+                    modestbranding: 1,
+                    rel: 0,
+                    iv_load_policy: 3
+                }
+            });
+        }
+
+        function onPlayerReady(event) {
+            // スタートボタンの制御
+            const startBtn = document.getElementById('start-btn');
+            const overlay = document.getElementById('start-overlay');
+
+            startBtn.addEventListener('click', () => {
+                event.target.playVideo();
+                overlay.classList.add('hidden');
+                // ループチェック開始
+                startLoopCheck();
+            });
+
+            // 最初のシーク位置をセット
+            event.target.seekTo(START_TIME, true);
+        }
+
+        function onPlayerStateChange(event) {
+            // 再生中のみループチェック
+            if (event.data === YT.PlayerState.PLAYING) {
+                startLoopCheck();
+            } else {
+                stopLoopCheck();
+            }
+        }
+
+        function startLoopCheck() {
+            if (loopInterval) return;
+            loopInterval = setInterval(checkLoop, 50);
+        }
+
+        function stopLoopCheck() {
+            if (loopInterval) {
+                clearInterval(loopInterval);
+                loopInterval = null;
+            }
+        }
+
+        let isSeeking = false;
+
+        function checkLoop() {
+            if (isPiLocked) return; // πモードならカウントストップ
+
+            // メインプレイヤーのループ
+            if (player && typeof player.getCurrentTime === 'function' && !isSeeking) {
+                const currentTime = player.getCurrentTime();
+                if (currentTime >= END_TIME) {
+                    isSeeking = true; // ロック
+                    rinneCount++;
+                    updateCounter();
+                    player.seekTo(START_TIME, true);
+                    setTimeout(() => { isSeeking = false; }, 500);
+                }
+            }
+
+            // 生命性シンドロウム (bgPlayer2) のループ
+            if (isSeimeiPlaying && bgPlayer2 && typeof bgPlayer2.getCurrentTime === 'function') {
+                const bgTime = bgPlayer2.getCurrentTime();
+                if (bgTime >= 240) { // 4:00 = 240秒
+                    bgPlayer2.seekTo(8, true); // 0:08 = 8秒
+                }
+            }
+        }
+
+        function updateCounter() {
+            const countEl = document.getElementById('count');
+            const labelEl = document.querySelector('.rinne-label');
+
+            if (isPiLocked) {
+                countEl.textContent = 'π';
+            } else if (isHanshinMode) {
+                // 輪廻回数と連動
+                const val1 = 33 * rinneCount;
+                const val2 = 4 * rinneCount;
+                countEl.textContent = `${val1}-${val2}`;
+            } else {
+                countEl.textContent = rinneCount.toLocaleString();
+            }
+
+            // フラッシュアニメーション
+            countEl.classList.remove('flash');
+            void countEl.offsetWidth; // リフロー強制
+            countEl.classList.add('flash');
+
+            // 赤いノイズ強度を更新 (輪廻回数 / 4)%
+            const noiseOpacity = Math.min(rinneCount / 4, 100) / 100;
+            document.getElementById('noise').style.opacity = noiseOpacity;
+
+            // 輪廻回数と数字を少しずつ黒くする
+            // 0回: #8b0000 (DarkRed) -> 400回: #000000 (Black)
+            const darkness = Math.min(rinneCount / 400, 1);
+            // 赤成分: 139 (8B) -> 0
+            const redComponent = Math.floor(139 * (1 - darkness));
+            const color = `rgb(${redComponent}, 0, 0)`;
+
+            countEl.style.color = color;
+            countEl.style.webkitTextFillColor = color; // グラデーション上書き用
+            countEl.style.background = 'none'; // 背景グラデーションを無効化
+            labelEl.style.color = color;
+            labelEl.style.textShadow = `0 0 20px rgba(${redComponent}, 0, 0, 0.7)`;
+
+            // 背景を少しずつ赤くする (文字の後ろ)
+            // (輪廻回数 / 3)%
+            const bgOpacity = Math.min(rinneCount / 3, 80) / 100;
+            document.getElementById('red-bg').style.opacity = bgOpacity;
+
+            // サウンドエフェクト（150回まではだんだん強く、最大30%）
+            if (rinneCount > 0) {
+                let volume;
+                if (rinneCount <= 150) {
+                    // 0〜150: だんだん強くなる (0.05 → 0.3)
+                    volume = 0.05 + (rinneCount / 150) * 0.25;
+                } else {
+                    // 150以降: 30%を維持
+                    volume = 0.3;
+                }
+                playLoopSound(volume);
+            }
+        }
+
+        // ループ時のサウンドエフェクト（強い音割れ付き）
+        function playLoopSound(volumeLevel = 0.5) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // ディストーション（音割れ）を作成 - 音量に応じて歪みも変化
+            function makeDistortionCurve(amount) {
+                const samples = 44100;
+                const curve = new Float32Array(samples);
+                for (let i = 0; i < samples; i++) {
+                    const x = (i * 2) / samples - 1;
+                    curve[i] = ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
+                }
+                return curve;
+            }
+
+            const distortionAmount = 100 + volumeLevel * 400; // 音量に応じてディストーションも変化
+            const distortion = audioCtx.createWaveShaper();
+            distortion.curve = makeDistortionCurve(distortionAmount);
+            distortion.oversample = '4x';
+
+            // 低い不協和音（複数重ねる）
+            const frequencies = [55, 58, 41, 62];
+
+            frequencies.forEach((freq, index) => {
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = index % 2 === 0 ? 'sawtooth' : 'square';
+                oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(freq * 0.7, audioCtx.currentTime + 0.6);
+
+                gainNode.gain.setValueAtTime(0.4 * volumeLevel, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(distortion);
+
+                oscillator.start(audioCtx.currentTime + index * 0.02);
+                oscillator.stop(audioCtx.currentTime + 0.6);
+            });
+
+            // ノイズも追加（音割れ感を強化）
+            const bufferSize = audioCtx.sampleRate * 0.3;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2));
+            }
+            const noiseSource = audioCtx.createBufferSource();
+            noiseSource.buffer = buffer;
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.3 * volumeLevel, audioCtx.currentTime);
+            noiseSource.connect(noiseGain);
+            noiseGain.connect(distortion);
+            noiseSource.start();
+
+            // マスターゲイン
+            const masterGain = audioCtx.createGain();
+            masterGain.gain.setValueAtTime(0.5 * volumeLevel, audioCtx.currentTime);
+
+            distortion.connect(masterGain);
+            masterGain.connect(audioCtx.destination);
+        }
+
+        // ===== RETRY NOW イースターエッグ =====
+        const RETRY_SEQUENCE = ['R', 'E', 'T', 'R', 'Y', 'N', 'O', 'W'];
+        let keySequence = [];
+        let keyTimeout = null;
+
+        // Web Audio API でサウンドエフェクト
+        function playRetrySound() {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // 不協和音と低音の重なり
+            const frequencies = [110, 138.59, 164.81, 55];
+
+            frequencies.forEach((freq, index) => {
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = index === 3 ? 'sawtooth' : 'sine';
+                oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.start(audioCtx.currentTime + index * 0.05);
+                oscillator.stop(audioCtx.currentTime + 1.5);
+            });
+
+            // ノイズ音
+            const bufferSize = audioCtx.sampleRate * 0.5;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+            }
+            const noiseSource = audioCtx.createBufferSource();
+            noiseSource.buffer = buffer;
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            noiseSource.connect(noiseGain);
+            noiseGain.connect(audioCtx.destination);
+            noiseSource.start();
+        }
+
+        function triggerRetryNow() {
+            // 現在の100,000 に足して 合計 207944155 にする
+            // 207944155 - 100000 = 207844155
+            rinneCount += 207844155;
+            updateCounter();
+
+            // フラッシュエフェクト
+            const flashEl = document.getElementById('retryFlash');
+            flashEl.classList.remove('active');
+            void flashEl.offsetWidth;
+            flashEl.classList.add('active');
+
+            // サウンド
+            playRetrySound();
+
+            console.log('RETRY NOW activated! +207,944,155');
+        }
+
+        // ===== PI EASTER EGG =====
+        const PI_SEQUENCE_15 = '314159265358979';
+        let piBuffer = '';
+        let piTimeout = null;
+        let isPiLocked = false;
+        let isPiAnimating = false;
+
+        // ===== HANSHIN EASTER EGG (33-4) =====
+        const HANSHIN_SEQUENCE = ['3', '3', '-', '4'];
+        let hanshinKeySequence = [];
+        let isHanshinMode = false;
+
+        // ===== SHUTTLE RUN EASTER EGG =====
+        const SHUTTLE_SEQUENCE = ['S', 'H', 'U', 'T', 'T', 'L', 'E', 'R', 'U', 'N'];
+        let shuttleKeySequence = [];
+        let shuttleAudio = null;
+
+        function toggleShuttleRun() {
+            if (!shuttleAudio) {
+                // 初回作成
+                shuttleAudio = new Audio('./20mshatorurannoano-yin-yuan-nai-jiu22fen.mp3');
+                shuttleAudio.loop = true;
+                shuttleAudio.volume = 0.5;
+                shuttleAudio.playbackRate = 140 / 60;
+            }
+
+            if (shuttleAudio.paused) {
+                // 再生開始
+                shuttleAudio.play().then(() => {
+                    console.log('Shuttle Run: Playing');
+                }).catch(e => console.error('Audio play failed:', e));
+
+                // YouTubeの音を止める（または一時停止） -> 同時再生のためコメントアウト
+                // if (player && typeof player.pauseVideo === 'function') {
+                //     player.pauseVideo();
+                // }
+            } else {
+                // 停止
+                shuttleAudio.pause();
+                shuttleAudio.currentTime = 0; // 最初に戻すか、一時停止のままにするか。ここでは停止＝リセットとする
+                console.log('Shuttle Run: Stopped');
+
+                // YouTube再開（任意だが、戻した方が親切か？一旦そのままにする）
+                // if (player && typeof player.playVideo === 'function') {
+                //    player.playVideo();
+                // }
+            }
+        }
+
+        // ===== COSMO EASTER EGG =====
+        const COSMO_SEQUENCE = ['C', 'O', 'S', 'M', 'O'];
+        let cosmoKeySequence = [];
+        let isCosmoPlaying = false;
+
+        function toggleCosmo() {
+            if (!bgPlayer || typeof bgPlayer.playVideo !== 'function') return;
+
+            if (!isCosmoPlaying) {
+                bgPlayer.playVideo();
+                isCosmoPlaying = true;
+                console.log('cosMo: Playing');
+            } else {
+                bgPlayer.pauseVideo();
+                bgPlayer.seekTo(0);
+                isCosmoPlaying = false;
+                console.log('cosMo: Stopped');
+            }
+        }
+
+        function finalizePi() {
+            isPiAnimating = false;
+            isPiLocked = true;
+            rinneCount = Math.PI;
+            updateCounter();
+            console.log('Pi Mode Locked: π');
+        }
+
+        // ===== SEIMEI EASTER EGG =====
+        const SEIMEI_SEQUENCE = ['3', '7'];
+        let seimeiKeySequence = [];
+        let isSeimeiPlaying = false;
+
+        function toggleSeimei() {
+            if (!bgPlayer2 || typeof bgPlayer2.playVideo !== 'function') return;
+
+            if (!isSeimeiPlaying) {
+                bgPlayer2.seekTo(8, true); // 0:08から開始
+                bgPlayer2.playVideo();
+                isSeimeiPlaying = true;
+                console.log('Seimei: Playing (Loop 0:08-4:00)');
+            } else {
+                bgPlayer2.pauseVideo();
+                bgPlayer2.seekTo(0);
+                isSeimeiPlaying = false;
+                console.log('Seimei: Stopped');
+            }
+        }
+
+        function triggerPiTransition() {
+            if (isPiLocked || isPiAnimating) return;
+            isPiAnimating = true;
+
+            const startVal = rinneCount;
+            const endVal = Math.PI;
+            const duration = 314.159265358979; // 0.314... seconds
+            const startTime = performance.now();
+
+            function animate(now) {
+                if (isPiLocked) return;
+                const elapsed = now - startTime;
+
+                if (elapsed >= duration) {
+                    rinneCount = endVal;
+                    // アニメーション完了時はまだ数字
+                    document.getElementById('count').textContent = "3.14159265358979";
+
+                    // 0.3秒待ってから π にする
+                    setTimeout(() => {
+                        if (!isPiLocked) {
+                            finalizePi();
+                        }
+                    }, 300);
+                    return;
+                }
+
+                // Linear interpolation
+                const t = elapsed / duration;
+                rinneCount = startVal - (startVal - endVal) * t;
+
+                updateCounter();
+
+                requestAnimationFrame(animate);
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // ===== KAIJUU EASTER EGG =====
+        const KAIJUU_SEQUENCE = ['3', '8'];
+        let kaijuuKeySequence = [];
+        let isKaijuuPlaying = false;
+
+        function toggleKaijuu() {
+            if (!bgPlayer3 || typeof bgPlayer3.playVideo !== 'function') return;
+
+            if (!isKaijuuPlaying) {
+                bgPlayer3.playVideo();
+                isKaijuuPlaying = true;
+                console.log('Kaijuu: Playing');
+            } else {
+                bgPlayer3.pauseVideo();
+                bgPlayer3.seekTo(0);
+                isKaijuuPlaying = false;
+                console.log('Kaijuu: Stopped');
+            }
+        }
+
+        // ===== GIGA (Plus Danshi) EASTER EGG =====
+        const GIGA_SEQUENCE = ['G', 'I', 'G', 'A'];
+        let gigaKeySequence = [];
+        let isDansiPlaying = false;
+
+        function toggleDansi() {
+            if (!bgPlayer4 || typeof bgPlayer4.playVideo !== 'function') return;
+
+            if (!isDansiPlaying) {
+                bgPlayer4.playVideo();
+                isDansiPlaying = true;
+                console.log('Plus Danshi: Playing');
+            } else {
+                bgPlayer4.pauseVideo();
+                bgPlayer4.seekTo(0);
+                isDansiPlaying = false;
+                console.log('Plus Danshi: Stopped');
+            }
+        }
+
+        // ===== YUKIC EASTER EGG =====
+        const YUKIC_SEQUENCE = ['Y', 'U', 'K', 'I', 'C'];
+        let yukicKeySequence = [];
+
+        function triggerYukic() {
+            window.location.href = 'https://disxord888-hash.github.io/tensei/';
+        }
+
+        // ===== DISCORD EASTER EGG =====
+        const DISCORD_SEQUENCE = ['D', 'I', 'S', 'C', 'O', 'R', 'D'];
+        let discordKeySequence = [];
+
+        function triggerDiscord() {
+            window.location.href = 'https://discord.gg/hS6fjH6JyK';
+        }
+
+        // ===== ALL EASTER EGG =====
+        const ALL_SEQUENCE = ['A', 'L', 'L'];
+        let allKeySequence = [];
+
+        function triggerAll() {
+            // すべてのプレイヤーを再生（すでに再生中のものはそのまま）
+            if (!isDansiPlaying) toggleDansi();
+            if (!isKaijuuPlaying) toggleKaijuu();
+            if (!isSeimeiPlaying) toggleSeimei();
+            if (!isCosmoPlaying) toggleCosmo();
+            showToast('🚨 ALL EASTER EGGS ACTIVATED! 🚨');
+        }
+
+        // ===== YOUTUBE CUSTOM EASTER EGG =====
+        const YOUTUBE_SEQUENCE = ['Y', 'O', 'U', 'T', 'U', 'B', 'E'];
+        let youtubeKeySequence = [];
+        let isYtInputVisible = false;
+
+        function toggleYtInput() {
+            const container = document.getElementById('yt-input-container');
+            const input = document.getElementById('custom-yt-url');
+            isYtInputVisible = !isYtInputVisible;
+
+            if (isYtInputVisible) {
+                container.classList.add('active');
+                input.focus();
+            } else {
+                container.classList.remove('active');
+                input.blur();
+            }
+        }
+
+        function extractVideoId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        document.getElementById('custom-yt-play').addEventListener('click', () => {
+            const url = document.getElementById('custom-yt-url').value;
+            const videoId = extractVideoId(url);
+
+            if (videoId && bgPlayerCustom && typeof bgPlayerCustom.loadVideoById === 'function') {
+                bgPlayerCustom.loadVideoById({
+                    videoId: videoId,
+                    startSeconds: 0
+                });
+                toggleYtInput();
+                console.log('Custom YouTube playing:', videoId);
+            } else {
+                alert('正しいYouTubeのURLをいれてね');
+            }
+        });
+
+        // Enterキーでも再生できるように
+        document.getElementById('custom-yt-url').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('custom-yt-play').click();
+            }
+            // Escで閉じる
+            if (e.key === 'Escape') {
+                toggleYtInput();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            let key = e.key.toUpperCase();
+
+
+            // タイムアウトリセット
+            if (keyTimeout) clearTimeout(keyTimeout);
+            keyTimeout = setTimeout(() => {
+                keySequence = [];
+                hanshinKeySequence = [];
+                shuttleKeySequence = [];
+                seimeiKeySequence = [];
+                kaijuuKeySequence = [];
+                gigaKeySequence = [];
+                cosmoKeySequence = [];
+                yukicKeySequence = [];
+                discordKeySequence = [];
+                youtubeKeySequence = [];
+                allKeySequence = [];
+            }, 2000);
+
+            // 次に必要なキーをチェック
+            const nextIndex = keySequence.length;
+            if (key === RETRY_SEQUENCE[nextIndex]) {
+                keySequence.push(key);
+
+                // 段階的な加算 (指定された累計値になるように加算)
+                // R: 計1       (+1)
+                // E: 計5       (+4)
+                // T: 計15      (+10)
+                // R: 計50      (+35)
+                // Y: 計200     (+150)
+                // N: 計4000    (+3800)
+                // O: 計100000  (+96000)
+                // W: Final 計207944155 (+207844155)
+
+                let addCount = 0;
+                let soundFreq = 0;
+
+                switch (keySequence.length) {
+                    case 1: addCount = 1; soundFreq = 440; break;      // R (+1)
+                    case 2: addCount = 4; soundFreq = 554; break;      // E (+4) -> 計5
+                    case 3: addCount = 10; soundFreq = 659; break;     // T (+10) -> 計15
+                    case 4: addCount = 35; soundFreq = 880; break;     // R (+35) -> 計50
+                    case 5: addCount = 150; soundFreq = 1661; break;   // Y (+150) -> 計200
+                    case 6: addCount = 3800; soundFreq = 2217; break;  // N (+3800) -> 計4000
+                    case 7: addCount = 96000; soundFreq = 3322; break; // O (+96000) -> 計100000
+                }
+
+                if (addCount > 0 && !isPiLocked) {
+                    rinneCount += addCount;
+                    updateCounter();
+                    // 小さなタイプ音
+                    playTypeSound(soundFreq);
+                }
+
+                // 全シーケンス完了 (W)
+                if (keySequence.length === RETRY_SEQUENCE.length) {
+                    if (!isPiLocked) {
+                        triggerRetryNow();
+                    }
+                    keySequence = [];
+                }
+            } else if (key === RETRY_SEQUENCE[0]) {
+                // Rでリセットして再開 (+1)
+                keySequence = [key];
+                if (!isPiLocked) {
+                    rinneCount += 1;
+                    updateCounter();
+                    playTypeSound(440);
+                }
+            } else {
+                keySequence = [];
+            }
+
+            // ===== SHUTTLE RUN Sequence Check =====
+            if (SHUTTLE_SEQUENCE[shuttleKeySequence.length] === key) {
+                shuttleKeySequence.push(key);
+                if (shuttleKeySequence.length === SHUTTLE_SEQUENCE.length) {
+                    toggleShuttleRun();
+                    playTypeSound(880); // 完了音
+                    shuttleKeySequence = [];
+                }
+            } else if (key === SHUTTLE_SEQUENCE[0]) {
+                shuttleKeySequence = [key];
+            } else {
+                shuttleKeySequence = [];
+            }
+
+            // ===== HANSHIN Sequence Check (33-4) =====
+            // keyは大文字化されているので '-' はそのままでOK、数字もOK
+            if (HANSHIN_SEQUENCE[hanshinKeySequence.length] === key) {
+                hanshinKeySequence.push(key);
+                // 3, 3, -, 4 完成
+                if (hanshinKeySequence.length === HANSHIN_SEQUENCE.length) {
+                    isHanshinMode = !isHanshinMode; // トグル切り替え
+                    updateCounter();
+
+                    if (isHanshinMode) {
+                        playTypeSound(660);
+                        console.log(`HANSHIN mode: ON (x${rinneCount})`);
+                    } else {
+                        playTypeSound(440);
+                        console.log('HANSHIN mode: OFF');
+                    }
+                    hanshinKeySequence = [];
+                }
+            } else if (key === HANSHIN_SEQUENCE[0]) {
+                // '3' が来た場合、リスタート
+                hanshinKeySequence = [key];
+            } else {
+                hanshinKeySequence = [];
+            }
+
+            // ===== SEIMEI Sequence Check =====
+            if (SEIMEI_SEQUENCE[seimeiKeySequence.length] === key) {
+                seimeiKeySequence.push(key);
+                if (seimeiKeySequence.length === SEIMEI_SEQUENCE.length) {
+                    toggleSeimei();
+                    playTypeSound(1500); // 別の音
+                    seimeiKeySequence = [];
+                }
+            } else if (key === SEIMEI_SEQUENCE[0]) {
+                seimeiKeySequence = [key];
+            } else {
+                seimeiKeySequence = [];
+            }
+
+            // ===== KAIJUU Sequence Check =====
+            if (KAIJUU_SEQUENCE[kaijuuKeySequence.length] === key) {
+                kaijuuKeySequence.push(key);
+                if (kaijuuKeySequence.length === KAIJUU_SEQUENCE.length) {
+                    toggleKaijuu();
+                    playTypeSound(1100);
+                    kaijuuKeySequence = [];
+                }
+            } else if (key === KAIJUU_SEQUENCE[0]) {
+                kaijuuKeySequence = [key];
+            } else {
+                kaijuuKeySequence = [];
+            }
+
+            // ===== GIGA Sequence Check =====
+            if (GIGA_SEQUENCE[gigaKeySequence.length] === key) {
+                gigaKeySequence.push(key);
+                if (gigaKeySequence.length === GIGA_SEQUENCE.length) {
+                    toggleDansi();
+                    playTypeSound(1400);
+                    gigaKeySequence = [];
+                }
+            } else {
+                gigaKeySequence = [];
+            }
+
+            // ===== YUKIC Sequence Check =====
+            if (YUKIC_SEQUENCE[yukicKeySequence.length] === key) {
+                yukicKeySequence.push(key);
+                if (yukicKeySequence.length === YUKIC_SEQUENCE.length) {
+                    triggerYukic();
+                    yukicKeySequence = [];
+                }
+            } else {
+                yukicKeySequence = [];
+            }
+
+            // ===== DISCORD Sequence Check =====
+            if (DISCORD_SEQUENCE[discordKeySequence.length] === key) {
+                discordKeySequence.push(key);
+                if (discordKeySequence.length === DISCORD_SEQUENCE.length) {
+                    triggerDiscord();
+                    discordKeySequence = [];
+                }
+            } else {
+                discordKeySequence = [];
+            }
+
+            // ===== ALL Sequence Check =====
+            if (ALL_SEQUENCE[allKeySequence.length] === key) {
+                allKeySequence.push(key);
+                if (allKeySequence.length === ALL_SEQUENCE.length) {
+                    triggerAll();
+                    allKeySequence = [];
+                }
+            } else if (key === ALL_SEQUENCE[0]) {
+                allKeySequence = [key];
+            } else {
+                allKeySequence = [];
+            }
+
+            // 入力中なら他のショートカットを無視
+            if (isYtInputVisible) return;
+
+            // ===== YOUTUBE Sequence Check =====
+            if (YOUTUBE_SEQUENCE[youtubeKeySequence.length] === key) {
+                youtubeKeySequence.push(key);
+                if (youtubeKeySequence.length === YOUTUBE_SEQUENCE.length) {
+                    toggleYtInput();
+                    playTypeSound(1200);
+                    youtubeKeySequence = [];
+                }
+            } else if (key === YOUTUBE_SEQUENCE[0]) {
+                youtubeKeySequence = [key];
+            } else {
+                youtubeKeySequence = [];
+            }
+
+            // ===== COSMO Sequence Check =====
+            if (COSMO_SEQUENCE[cosmoKeySequence.length] === key) {
+                cosmoKeySequence.push(key);
+                if (cosmoKeySequence.length === COSMO_SEQUENCE.length) {
+                    toggleCosmo();
+                    playTypeSound(1320); // 高めの音
+                    cosmoKeySequence = [];
+                }
+            } else if (key === COSMO_SEQUENCE[0]) {
+                cosmoKeySequence = [key];
+            } else {
+                cosmoKeySequence = [];
+            }
+
+
+
+            // ===== PI Sequence Check =====
+            const digit = e.key;
+            if ("0123456789".includes(digit)) {
+                if (piTimeout) clearTimeout(piTimeout);
+                piTimeout = setTimeout(() => {
+                    piBuffer = '';
+                }, 2000);
+
+                const potentialBuffer = piBuffer + digit;
+
+                if (PI_SEQUENCE_15.startsWith(potentialBuffer)) {
+                    piBuffer = potentialBuffer;
+                    if (piBuffer === PI_SEQUENCE_15) {
+                        triggerPiTransition();
+                        // 15桁達成したらバッファはそのままにするかクリアするか
+                        // PIモードに入れば以後の入力は無視される(isPiLocked)がAnimation中は無視されない
+                        // シンプルにクリアしておく
+                        piBuffer = '';
+                    }
+                } else {
+                    // Mismatch
+                    if (digit === PI_SEQUENCE_15[0]) {
+                        piBuffer = digit;
+                    } else {
+                        piBuffer = '';
+                    }
+                }
+            } else {
+                piBuffer = '';
+            }
+        });
+
+        function playTypeSound(freq) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1);
+        }
+    </script>
+</body>
+
+</html>
